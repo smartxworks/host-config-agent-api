@@ -1,6 +1,6 @@
 module github.com/smartxworks/host-config-agent-api
 
-go 1.20
+go 1.21
 
 require (
 	k8s.io/api v0.27.2
