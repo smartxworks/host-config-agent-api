@@ -34,8 +34,8 @@ func (in *Ansible) DeepCopyInto(out *Ansible) {
 		*out = new(RemotePlaybook)
 		**out = **in
 	}
-	if in.LocalPlaybook != nil {
-		in, out := &in.LocalPlaybook, &out.LocalPlaybook
+	if in.LocalPlaybookText != nil {
+		in, out := &in.LocalPlaybookText, &out.LocalPlaybookText
 		*out = new(YAMLText)
 		(*in).DeepCopyInto(*out)
 	}
