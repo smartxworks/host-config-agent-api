@@ -17,7 +17,11 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	corev1 "k8s.io/api/core/v1"
+	apitypes "k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Phase is a string representation of a HostConfig Phase.
@@ -34,8 +38,8 @@ const (
 type Ansible struct {
 	// RemotePlaybook 在远端的 playbook，单个 .tar.gz 压缩包，内容可以是单个 yaml 文件，也可以符合 ansible 要求的目录
 	RemotePlaybook *RemotePlaybook `json:"remotePlaybook,omitempty"`
-	// LocalPlaybook 本地的 playbook，单个 yaml 文件， secret 引用或者 yaml 字符串
-	LocalPlaybook *YAMLText `json:"localPlaybook,omitempty"`
+	// LocalPlaybookText 本地的 playbook，单个 yaml 文件， secret 引用或者 yaml 字符串
+	LocalPlaybookText *YAMLText `json:"localPlaybookText,omitempty"`
 	// Values 执行 playbook 的参数，yaml 格式，可以是 secret 引用或者 yaml 字符串
 	Values *YAMLText `json:"values,omitempty"`
 }
@@ -52,7 +56,53 @@ type RemotePlaybook struct {
 type YAMLText struct {
 	// SecretRef specifies the secret which stores yaml text.
 	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
-	// Content is the inline yaml text.
+	// Inline is the inline yaml text.
 	//+kubebuilder:validation:Format=yaml
-	Content string `json:"content,omitempty"`
+	Inline string `json:"inline,omitempty"`
+}
+
+const (
+	valuesYamlKey = "values.yaml"
+)
+
+func (in *YAMLText) IsEmpty() bool {
+	if in == nil {
+		return true
+	}
+	if in.SecretRef != nil && in.SecretRef.Name == "" && in.Inline == "" {
+		return true
+	}
+	return in.SecretRef == nil && in.Inline == ""
+}
+
+func (in *YAMLText) getSecretNamespacedName(defaultNamespace string) (apitypes.NamespacedName, bool) {
+	if in.SecretRef != nil && in.SecretRef.Name != "" {
+		result := apitypes.NamespacedName{
+			Namespace: in.SecretRef.Namespace,
+			Name:      in.SecretRef.Name,
+		}
+		if result.Namespace == "" {
+			result.Namespace = defaultNamespace
+		}
+		return result, true
+	}
+	return apitypes.NamespacedName{}, false
+}
+
+// GetContent 优先使用secret，如果不存在尝试使用inline yaml.
+func (in *YAMLText) GetContent(ctx context.Context, c client.Client, defaultNamespace string) (string, error) {
+	if in.IsEmpty() {
+		return "", nil
+	}
+	secretKey, ok := in.getSecretNamespacedName(defaultNamespace)
+	if ok {
+		var err error
+		secret := &corev1.Secret{}
+		if err = c.Get(ctx, secretKey, secret); err != nil {
+			return "", err
+		}
+		return string(secret.Data[valuesYamlKey]), nil
+	} else {
+		return in.Inline, nil
+	}
 }
